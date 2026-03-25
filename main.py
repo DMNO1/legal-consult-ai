@@ -11,8 +11,6 @@ from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,18 +19,16 @@ app = FastAPI(title="LegalConsult AI", version="0.1.0")
 
 BASE_DIR = Path(__file__).parent
 KNOWLEDGE_DIR = BASE_DIR / "knowledge_base"
-TEMPLATES_DIR = BASE_DIR / "templates"
-STATIC_DIR = BASE_DIR / "static"
-SKILLS_DIR = BASE_DIR / "skills"
 
-# Ensure dirs exist
-TEMPLATES_DIR.mkdir(exist_ok=True)
-STATIC_DIR.mkdir(exist_ok=True)
+# Conditional template/static mounting (Vercel serverless has read-only fs)
+templates = None
+if (BASE_DIR / "templates").exists():
+    from fastapi.templating import Jinja2Templates
+    templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+if (BASE_DIR / "static").exists():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 KNOWLEDGE_DIR.mkdir(exist_ok=True)
-
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
@@ -357,10 +353,29 @@ SKILLS_REGISTRY = {
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Landing page with all skills"""
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "skills": SKILLS_REGISTRY, "llm_configured": bool(DEEPSEEK_API_KEY)},
-    )
+    if templates:
+        return templates.TemplateResponse(
+            "index.html",
+            {"request": request, "skills": SKILLS_REGISTRY, "llm_configured": bool(DEEPSEEK_API_KEY)},
+        )
+    # Fallback inline HTML for Vercel serverless
+    skills_html = "".join([f'<div style="background:#f5f5f5;padding:12px;margin:8px 0;border-radius:8px"><h3>{v["icon"]} {v["name"]}</h3><p>{v["description"]}</p></div>' for k,v in SKILLS_REGISTRY.items()])
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LegalConsult AI - 法律咨询助手</title>
+<style>body{{font-family:system-ui;max-width:700px;margin:0 auto;padding:20px;background:#f8f9fa}}
+.header{{text-align:center;padding:20px 0}}.skills{{margin:20px 0}}
+.skill{{background:#fff;padding:15px;margin:10px 0;border-radius:10px;box-shadow:0 2px 4px rgba(0,0,0,.1)}}
+.skill h3{{margin:0 0 8px 0;color:#1976d2}}.skill p{{margin:0;color:#666}}
+form{{background:#fff;padding:20px;border-radius:10px;box-shadow:0 2px 4px rgba(0,0,0,.1)}}
+select,textarea{{width:100%;padding:10px;margin:8px 0;border:1px solid #ddd;border-radius:6px;box-sizing:border-box}}
+button{{padding:12px 24px;background:#1976d2;color:#fff;border:none;border-radius:6px;cursor:pointer}}
+</style></head><body><div class="header"><h1>⚖️ LegalConsult AI</h1><p>中国法律咨询AI技能套装</p></div>
+<div class="skills"><h2>可用技能</h2>{skills_html}</div>
+<form action="/api/consult" method="post"><h3>开始咨询</h3>
+<select name="skill_type"><option value="contract_review">📋 合同审查</option><option value="legal_qa">❓ 法律问答</option><option value="compliance_check">✅ 企业合规检查</option><option value="labor_dispute">👷 劳动争议咨询</option><option value="ip_protection">🔒 知识产权保护</option><option value="debt_collection">💰 债务催收指导</option></select>
+<textarea name="question" rows="5" placeholder="请输入您的问题..."></textarea>
+<button type="submit">提交咨询</button></form></body></html>""")
 
 
 @app.post("/api/consult")
@@ -420,6 +435,13 @@ async def health():
         "llm_configured": bool(DEEPSEEK_API_KEY),
     }
 
+
+# Vercel serverless handler
+try:
+    from mangum import Mangum
+    handler = Mangum(app)
+except ImportError:
+    handler = app
 
 if __name__ == "__main__":
     import uvicorn
