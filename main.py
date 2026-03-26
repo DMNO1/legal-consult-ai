@@ -28,7 +28,9 @@ if (BASE_DIR / "templates").exists():
 if (BASE_DIR / "static").exists():
     from fastapi.staticfiles import StaticFiles
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
-KNOWLEDGE_DIR.mkdir(exist_ok=True)
+# Only create knowledge dir on non-Vercel (Vercel fs is read-only)
+if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
+    KNOWLEDGE_DIR.mkdir(exist_ok=True)
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
