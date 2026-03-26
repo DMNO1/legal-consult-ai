@@ -27,8 +27,7 @@ if (BASE_DIR / "templates").exists():
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 if (BASE_DIR / "static").exists():
     from fastapi.staticfiles import StaticFiles
-    if (Path(__file__).parent / "static").exists():
-        app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+    app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 # Only create knowledge dir on non-Vercel (Vercel fs is read-only)
 if not (os.getenv("VERCEL") or os.getenv("VERCEL_ENV")):
     KNOWLEDGE_DIR.mkdir(exist_ok=True)
