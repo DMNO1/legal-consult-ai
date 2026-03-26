@@ -29,7 +29,10 @@ if (BASE_DIR / "static").exists():
     from fastapi.staticfiles import StaticFiles
     if (Path(__file__).parent / "static").exists():
 
-        app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+        if (Path(__file__).parent / "static").exists():
+
+
+            app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 KNOWLEDGE_DIR.mkdir(exist_ok=True)
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
