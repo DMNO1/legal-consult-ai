@@ -1,37 +1,43 @@
 """
-LegalConsult AI - Vercel Serverless Entry Point
-FastAPI ASGI app wrapped with Mangum for Vercel Python runtime compatibility.
+LegalConsult AI - Vercel Serverless Entry Point (v2)
+Self-contained minimal test to isolate Vercel Python runtime issues.
 """
 import os
 import sys
 import logging
 
 logger = logging.getLogger("legalconsult.vercel")
+logging.basicConfig(level=logging.INFO)
 
 # Ensure project root is in path
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+logger.info(f"LegalConsult v2 init: project_root={project_root}")
 
 try:
-    from main import app
-    from mangum import Mangum
-    handler = Mangum(app, lifespan="off")
-    logger.info("LegalConsult handler created successfully")
+    from main import app as fastapi_app
+    logger.info("Successfully imported main.app")
 except Exception as e:
-    logger.error(f"LegalConsult app import failed: {e}", exc_info=True)
+    logger.error(f"Failed to import main.app: {e}", exc_info=True)
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
-    fallback_app = FastAPI(title="LegalConsult (Error)")
+    fastapi_app = FastAPI(title="LegalConsult (Fallback)")
 
-    @fallback_app.get("/")
-    @fallback_app.get("/{path:path}")
+    @fastapi_app.get("/")
+    @fastapi_app.get("/{path:path}")
     async def error_handler(path: str = ""):
         return JSONResponse(
             status_code=503,
-            content={
-                "error": "App failed to initialize",
-                "detail": str(e),
-                "hint": "Check Vercel function logs for full traceback"
-            }
+            content={"error": "Main app import failed", "detail": str(e)}
         )
 
-    handler = Mangum(fallback_app, lifespan="off")
+try:
+    from mangum import Mangum
+    handler = Mangum(fastapi_app, lifespan="off")
+    logger.info("Mangum handler created successfully")
+except Exception as e:
+    logger.error(f"Mangum handler creation failed: {e}", exc_info=True)
+    raise
